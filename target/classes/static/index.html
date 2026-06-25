@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>バイト給料計算 (Arubaito Calc)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="app-container">
+        <header class="app-header">
+            <img src="./images/my-logo.png" alt="Logo" class="app-logo">
+            <h1>バイト給料計算</h1>
+            <p>シフトと給料の管理アプリ</p>
+        </header>
+
+        <div class="main-layout">
+            
+            <div class="left-column">
+                <div class="card status-card">
+                    <h3>今月の概算給料 (Estimated Salary)</h3>
+                    <p class="amount">¥ <span id="total-salary">0</span></p>
+                </div>
+                <div class="card-grid">
+                    <div class="card sub-card">
+                        <h4>総労働時間 (Total Hours)</h4>
+                        <p id="total-hours">0h</p>
+                    </div>
+                    <div class="card sub-card">
+                        <h4>深夜労働 (Night Hours)</h4>
+                        <p id="night-hours">0h</p>
+                    </div>
+                </div>
+
+                <div class="card form-container" style="margin-top: 15px;">
+                    <h3>シフト履歴 (Shift History)</h3>
+                    <div id="history-list">
+                        <p style="color:#6c757d; font-size:0.9rem;">තවම ෂිෆ්ට් ඇතුළත් කර නැත.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-container">
+                <h3>シフト登録 (Add Shift)</h3>
+                <form id="shift-form">
+                    <div class="input-group">
+                        <label>勤務日 (Date)</label>
+                        <input type="date" id="work-date" required>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>時給 (Hourly Wage)</label>
+                            <input type="number" id="hourly-rate" value="1150" placeholder="¥" required>
+                        </div>
+                        <div class="input-group">
+                            <label>交通費 (Transport)</label>
+                            <input type="number" id="transport" value="0" placeholder="¥");">
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="input-group">
+                            <label>開始時間 (Start Time)</label>
+                            <input type="time" id="start-time" required>
+                        </div>
+                        <div class="input-group">
+                            <label>終了時間 (End Time)</label>
+                            <input type="time" id="end-time" required>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>休憩時間 (Break Time - 分)</label>
+                        <input type="number" id="break-time" value="0" placeholder="分 (Minutes)">
+                    </div>
+
+                    <button type="submit" class="btn-submit">シフトを保存 (Save Shift)</button>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", loadHistoryAndTotals);
+
+        document.getElementById('shift-form').addEventListener('submit', function(e) {
+            e.preventDefault(); 
+
+            let workDate = document.getElementById('work-date').value;
+            let hourlyRate = document.getElementById('hourly-rate').value;
+            let transport = parseInt(document.getElementById('transport').value) || 0;
+            let startTime = document.getElementById('start-time').value;
+            let endTime = document.getElementById('end-time').value;
+            let breakTime = document.getElementById('break-time').value;
+
+            // 💡 බැකෙන්ඩ් එකට ගැලපෙන විදියට URL එක සහ Variable Names වෙනස් කලා
+            let url = `/calculate?start=${startTime}&end=${endTime}&breakMins=${breakTime}&wage=${hourlyRate}`;
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error("Server Error");
+                    return response.json();
+                })
+                .then(data => {
+                    let finalSalary = data.totalSalary + transport;
+
+                    let newShift = {
+                        date: workDate,
+                        time: `${startTime} - ${endTime}`,
+                        totalHours: data.totalHours,
+                        nightHours: data.nightHours,
+                        salary: finalSalary
+                    };
+
+                    // Browser Storage එකේ සේව් කිරීම (History සඳහා)
+                    let savedShifts = JSON.parse(localStorage.getItem("shifts_history")) || [];
+                    savedShifts.push(newShift);
+                    localStorage.setItem("shifts_history", JSON.stringify(savedShifts));
+
+                    alert("シフトを保存しました！ 💰");
+                    loadHistoryAndTotals();
+                    document.getElementById('shift-form').reset();
+                })
+                .catch(error => {
+                    alert("ගණනය කිරීමේදී දෝෂයක් සිදු විය! Spring Boot Server එක Run කරලාද බලන්න.");
+                    console.error("Error:", error);
+                });
+        });
+
+        function loadHistoryAndTotals() {
+            let savedShifts = JSON.parse(localStorage.getItem("shifts_history")) || [];
+            let totalHoursSum = 0, nightHoursSum = 0, totalSalarySum = 0;
+            let html = "";
+
+            if (savedShifts.length === 0) {
+                document.getElementById('history-list').innerHTML = `<p style="color:#6c757d; font-size:0.9rem;">තවම ෂිෆ්ට් ඇතුළත් කර නැත.</p>`;
+                return;
+            }
+
+            savedShifts.slice().reverse().forEach(shift => {
+                totalHoursSum += shift.totalHours;
+                nightHoursSum += shift.nightHours;
+                totalSalarySum += shift.salary;
+
+                html += `
+                    <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid #f1f3f5; font-size:0.9rem; font-weight:500;">
+                        <span>📅 ${shift.date} (${shift.time})</span>
+                        <span style="color:#4361ee; font-weight:700;">¥${shift.salary.toLocaleString()}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('total-hours').innerText = totalHoursSum.toFixed(1) + "h";
+            document.getElementById('night-hours').innerText = nightHoursSum.toFixed(1) + "h";
+            document.getElementById('total-salary').innerText = totalSalarySum.toLocaleString();
+            document.getElementById('history-list').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
